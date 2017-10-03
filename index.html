@@ -55,6 +55,7 @@
       Rx.Observable
       .fromEvent(zipcodeInput, 'input')
       .map(e => e.target.value)
+      .filter(zip => zip.length === 5)
       .forEach(val => console.log('zipInputStream val: ', val));
   </script>
 
