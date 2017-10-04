@@ -51,12 +51,92 @@
     const zipcodeInput = document.getElementById('zipcode-input');
     const addLocationButton = document.getElementById('add-location');
 
+    // Get stream from button click event
     const buttonClickStream =
+      Rx.Observable
+      .fromEvent(addLocationButton, 'click')
+      // .map(() => true)
+      .mapTo(true);
+
+    // Get stream of zip codes
+    const zipInputStream =
       Rx.Observable
       .fromEvent(zipcodeInput, 'input')
       .map(e => e.target.value)
-      .filter(zip => zip.length === 5)
-      .forEach(val => console.log('zipInputStream val: ', val));
+      .filter(zip => zip.length === 5);
+
+    const WEATHER_KEY = 'ea980062829f19db9775cd9d13540204';
+
+    // Create reusable temprature fetching stream
+    // Needs error handling? Not sure how that works with RxJS
+    const getTemperature = zip =>
+      fetch(`http://api.openweathermap.org/data/2.5/weather?q=${zip},us&units=imperial&APPID=${WEATHER_KEY}`)
+      .then(res => res.json());
+    // Factory function that spits out zips and temps
+    const zipTemperatureStreamFactory = zip =>
+      Rx.Observable // create an Observable function
+      .fromPromise(getTemperature(zip)) // return a promise weather fetching functino
+      .map(({ // map over the array returning the temp
+        main: {
+          temp
+        }
+      }) => ({ // take the temperature returned above and pass it down
+        temp,
+        zip
+      })); // return an object with temp and zip as getTemperature (stream?)
+
+
+
+    // Interesting. Get the result of the streams above
+    const zipcodeStream =
+      buttonClickStream
+      .withLatestFrom(zipInputStream, (click, zip) => zip)
+      .distinct();
+
+    zipcodeStream
+      .flatMap(zipTemperatureStreamFactory)
+      .forEach(({
+        zip,
+        temp
+      }) => {
+        const locationEle = document.createElement('div');
+        locationEle.id = `zip-${zip}`;
+        locationEle.classList.add('location');
+
+        const zipEle = document.createElement('p');
+        zipEle.classList.add('zip');
+        zipEle.innerText = zip;
+
+        const tempEle = document.createElement('p');
+        tempEle.classList.add('temp');
+        tempEle.innerHTML = `${temp}&deg;F`;
+
+        locationEle.appendChild(zipEle);
+        locationEle.appendChild(tempEle);
+        appContainer.appendChild(locationEle);
+
+        zipcodeInput.value = '';
+      });
+
+    const replayZipStream = new Rx.ReplaySubject();
+    zipcodeStream.subscribe(replayZipsStream);
+
+    Rx.Observable
+      .interval(20000)
+      // .flatMapLatest(() => replayZipsStream)
+      .switchMap(() => replayZipsStream)
+      .flatMap(zipTemperatureStreamFactory)
+      .forEach(({
+        zip,
+        temp
+      }) => {
+        console.log('Updating!', zip, temp);
+
+        const locationEle = document.getElementById(`zip-${zip}`);
+        const tempEle = locationEle.querySelector('.temp');
+
+        tempEle.innerHTML = `${temp}&deg;F`;
+      });
   </script>
 
 </body>
